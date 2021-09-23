@@ -1,35 +1,16 @@
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
+const ObjectId = require('mongodb').ObjectId;
+
+const Person = require('./models/person');
+
 
 // INITIALIZATIONS
 
 const app = express();
 
 const PORT = process.env.PORT || 3001;
-
-let persons = [
-    {
-        "name": "Arto Hellas",
-        "number": "040-123456",
-        "id": 1
-    },
-    {
-        "name": "Ada Lovelace",
-        "number": "39-44-5323523",
-        "id": 2
-    },
-    {
-        "name": "Dan Abramov",
-        "number": "12-43-234345",
-        "id": 3
-    },
-    {
-        "name": "Mary Poppendieck",
-        "number": "39-23-6423122",
-        "id": 4
-    }
-];
 
 //MIDDLEWARES
 
@@ -65,83 +46,94 @@ app.get('/api/info', (req, res) => {
     `);
 });
 
+app.get('/api/persons', (req, res) => {
+    Person.find({}, (err, persons) => {
+        if (err) {
+            res.status(500).json({ message: 'Server error' });
+        } else {
+            res.json(persons);
+        }
+    })
+});
+
 app.get('/api/persons/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const person = persons.filter(p => p.id === id);
-    if (person.length === 1) {
-        res.status(200).json(person)
-    } else {
-        res.status(404).json({ message: 'Register not found' });
-    }
+    const id = req.params.id;
+    Person.findById(id, (err, person) => {
+        if (err) {
+            res.status(500).json({ message: 'Server error' });
+        } else {
+            if (person) {
+                res.json(person);
+            } else {
+                res.status(404).json({ message: 'Register not found' });
+            }
+        }
+    })
 });
 
 app.post('/api/persons', (req, res) => {
     const { name, number } = req.body;
-    const numberOfPersons = persons.length;
-    const repeatedPerson = persons.filter(p => p.name.toLowerCase() === name.toLowerCase());
-    const maxId = Math.max(...persons.map(p => p.id));
-    const personObj = {
-        name,
-        number,
-        id: maxId + 1
-    };
-    if (name && number) {
-        if (repeatedPerson.length === 0) {
-            persons = [...persons, personObj];
-            if (persons.length > numberOfPersons) {
-                res.status(200).json(personObj);
-            } else {
-                res.status(400).json({ message: "Can't register person" });
-            }
-        } else {
-            res.status(400).json({ message: 'Name must be unique' });
-        }
 
+    if (name && number) {
+        const person = new Person({
+            name: name,
+            number: number
+        });
+
+        person.save().then(savedPerson => {
+            res.status(200).json(savedPerson.toJSON());
+        })
     } else {
-        res.status(400).json({ message: "Name or number must be required" });
+        res.status(400).json({ message: "Name or number must be required" })
     }
 });
 
 app.put('/api/persons/:id', (req, res) => {
     const { name, number } = req.body;
-    const id = Number(req.params.id);
-    let [personObj] = persons.filter(p => p.id === id);
-    if (personObj) {
-        const newPersonsArray = persons.filter(p => p.id !== id);
-        if (name && number) {
-            personObj = { ...personObj, name, number };
-            persons = [...newPersonsArray, personObj];
-        } else if (name && !number) {
-            personObj = { ...personObj, name };
-            persons = [...newPersonsArray, personObj];
-
-        } else if (!name && number) {
-            personObj = { ...personObj, number };
-            persons = [...newPersonsArray, personObj];
-
-        } else {
-            res.status(400).json({ message: 'Name or number must be valid' });
-        }
-        res.status(200).json(personObj);
+    const id = req.params.id;
+    let personUpdated;
+    if (name && number) {
+        personUpdated = { name, number };
+    } else if (name && !number) {
+        personUpdated = { name };
+    } else if (!name && number) {
+        personUpdated = { number };
     } else {
-        res.status(404).json({ message: 'Register not found' })
+        res.status(400).json({ message: "Name or/and number must be required" });
     }
+
+    Person.findByIdAndUpdate(id, personUpdated, (err, person) => {
+        if (err) {
+            res.status(500).json({ message: 'Server error' });
+        } else {
+            if (person) {
+                res.json(person);
+            } else {
+                res.status(404).json({ message: 'Register not found' });
+            }
+        }
+    })
+
 });
 
 app.delete('/api/persons/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const deletedPerson = persons.filter(p => p.id === id);
-    if (deletedPerson.length === 1) {
-        persons = persons.filter(p => p.id !== id);
-        res.status(200).json(deletedPerson);
+    const id = req.params.id;
+    if (id) {
+        Person.findByIdAndDelete(id, (err, deletedPerson) => {
+            if (err) {
+                res.status(500).json({ message: 'Server error' });
+            } else {
+                if (deletedPerson) {
+                    res.status(200).send(deletedPerson);
+                } else {
+                    res.status(404).json({ message: 'Register not found' });
+                }
+            }
+        })
     } else {
-        res.status(404).json({ message: 'Register not found' });
+        res.status(400).json({ message: 'Id must be valid' });
     }
 
-});
-
-app.get('/api/persons', (req, res) => {
-    res.json(persons);
 });
 
 app.listen(PORT, () => {
